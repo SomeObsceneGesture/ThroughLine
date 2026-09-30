@@ -18,6 +18,7 @@ import * as exifrNs from 'exifr'
 import { decodeBmp } from './decoders/bmp'
 import { largestEmbeddedJpeg } from './decoders/raw'
 import { heifExif, heifSize, insertJpegExif, resetOrientation } from './decoders/exif-bytes'
+import { headerInfo, exifOrientation } from './decoders/header'
 import { ffprobe, extractFrame, makeStoryboard } from '../video/ffmpeg'
 import { readMp4Info } from '../video/mp4'
 import { SHARP_IMAGE, HEIF_IMAGE, RAW_IMAGE } from '@shared/formats'
@@ -350,15 +351,24 @@ async function quickHashOf(path: string, size: number): Promise<{ hash: string; 
 
 async function probeOne(f: ProbeFile): Promise<ProbeOut> {
   const out: ProbeOut = { path: f.path }
+  let head: Buffer
   try {
-    const { hash } = await quickHashOf(f.path, f.size)
-    out.quickHash = hash
+    const r = await quickHashOf(f.path, f.size)
+    out.quickHash = r.hash
+    head = r.head
   } catch (err) {
     out.error = friendlyError(err)
     return out
   }
   try {
-    if (f.kind === 'photo') {
+    const fast = f.kind === 'photo' ? headerInfo(head, f.ext) : null
+    if (fast && fast.width > 0 && fast.height > 0) {
+      // Common formats: dimensions and EXIF from the bytes we already read.
+      const orientation = fast.exif ? exifOrientation(fast.exif) : undefined
+      ;[out.width, out.height] = orientedDims(fast.width, fast.height, orientation)
+      out.orientation = orientation
+      if (fast.exif) out.takenAt = exifDate(await readExif(fast.exif))
+    } else if (f.kind === 'photo') {
       if (SHARP_IMAGE.has(f.ext) && f.ext !== 'svg') {
         const meta = await sharp(f.path, { failOn: 'none', limitInputPixels: 1_000_000_000 }).metadata()
         ;[out.width, out.height] = orientedDims(meta.width, meta.height, meta.orientation)

@@ -184,7 +184,7 @@ class ImportJob {
 
     const exclude = [DIRS.thumbnails, DIRS.previews, DIRS.database, DIRS.cache].map((d) => join(this.lib.root, d))
     const pending: ScannedFile[] = []
-    const CHUNK = 64
+    const CHUNK = 128
     for await (const batch of scan(this.req.paths, { exclude, signal: this.signal })) {
       this.found += batch.length
       pending.push(...batch)
@@ -260,16 +260,18 @@ class ImportJob {
 
   private async processChunk(files: ScannedFile[]): Promise<void> {
     this.currentPath = files[0]?.path
-    let probes: ProbeOut[]
-    try {
-      probes = await this.pool.run<ProbeOut[]>(
-        'probe',
-        { files: files.map((f) => ({ path: f.path, size: f.size, ext: f.ext, kind: f.kind })) },
-        LANE_IMPORT
+    // Probe in parallel across the worker pool, keeping file order.
+    const parts = Math.max(1, Math.min(this.pool.size, Math.ceil(files.length / 8)))
+    const per = Math.ceil(files.length / parts)
+    const groups = Array.from({ length: parts }, (_, i) => files.slice(i * per, (i + 1) * per)).filter((g) => g.length)
+    const probed = await Promise.all(
+      groups.map((g) =>
+        this.pool
+          .run<ProbeOut[]>('probe', { files: g.map((f) => ({ path: f.path, size: f.size, ext: f.ext, kind: f.kind })) }, LANE_IMPORT)
+          .catch((err: Error) => g.map((f) => ({ path: f.path, error: err.message })))
       )
-    } catch (err) {
-      probes = files.map((f) => ({ path: f.path, error: err instanceof Error ? err.message : String(err) }))
-    }
+    )
+    const probes: ProbeOut[] = probed.flat()
 
     const dupPolicy = this.forced ? 'import' : prefs.get().duplicateHandling
     const preferExif = prefs.get().metadata.preferExifDate

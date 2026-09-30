@@ -9,6 +9,7 @@ throughline/
 ├── throughline-backend/    # Express + Prisma + SQLite (dev) / Postgres (prod)
 ├── throughline-frontend/   # Vite + React 18 + Tailwind
 ├── docs/                   # Original build brief (SCHEMA.md, TWILIO_WEBHOOK.md, etc.)
+├── loupe/                  # Separate project: Loupe, a desktop photo & video library (see loupe/README.md)
 └── .claude/                # launch.json for dev-server orchestration
 ```
 

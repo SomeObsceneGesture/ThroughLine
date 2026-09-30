@@ -93,12 +93,12 @@ function useBootstrap(): void {
         void useGallery.getState().reload()
       }, ms)
     }
-    const scheduleStructure = (): void => {
+    const scheduleStructure = (ms: number): void => {
       if (structureTimer) return
       structureTimer = window.setTimeout(() => {
         structureTimer = null
         void useApp.getState().refreshStructure()
-      }, 250)
+      }, ms)
     }
     const offs = [
       on('library:opened', (info) => {
@@ -113,12 +113,17 @@ function useBootstrap(): void {
       on('library:changed', (c) => {
         if (c.type === 'items') invalidateItems(c.ids)
         if (c.type === 'reset') invalidateItems()
-        scheduleStructure()
-        scheduleLayout(120)
+        // During a big import, new rows arrive every few hundred ms; refresh
+        // the view about once a second instead of on every batch.
+        const importing = !!useApp.getState().activity.import
+        scheduleStructure(importing ? 1000 : 250)
+        scheduleLayout(importing ? 1000 : 120)
       }),
       on('media:updated', ({ ids }) => {
+        // Thumbnails/metadata only: visible items refresh themselves. Masonry
+        // also depends on aspect ratios, which processing can refine.
         invalidateItems(ids)
-        scheduleLayout(1500)
+        if (useApp.getState().prefs?.layout === 'masonry') scheduleLayout(3000)
       }),
       on('activity', (a) => useApp.setState({ activity: a })),
       on('history', (h) => useApp.setState({ history: { canUndo: h.canUndo, canRedo: h.canRedo, undoLabel: h.undoLabel, redoLabel: h.redoLabel } })),

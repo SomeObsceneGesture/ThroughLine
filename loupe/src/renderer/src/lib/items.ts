@@ -10,6 +10,8 @@ const MAX = 6000
 const cache = new Map<number, MediaItem>()
 const pending = new Set<number>()
 const inFlight = new Set<number>()
+/** Cached entries known to be out of date (still shown until refreshed). */
+const stale = new Set<number>()
 let scheduled = false
 
 export const useItemsVersion = create<{ v: number }>(() => ({ v: 0 }))
@@ -39,7 +41,10 @@ function flush(): void {
   }
   call('media.items', ids)
     .then((items) => {
-      for (const it of items) cache.set(it.id, it)
+      for (const it of items) {
+        cache.set(it.id, it)
+        stale.delete(it.id)
+      }
       while (cache.size > MAX) cache.delete(cache.keys().next().value!)
       bump()
     })
@@ -67,19 +72,40 @@ export function requestItems(ids: Iterable<number>): void {
   if (any) schedule()
 }
 
-/** Drop cached entries so the next render fetches fresh data. */
+/**
+ * Refresh cached entries. Cached items keep showing their current data until
+ * the fresh copy arrives (no placeholder flash); uncached ids are ignored and
+ * will be fetched when they scroll into view. No argument clears everything.
+ */
 export function invalidateItems(ids?: number[]): void {
-  if (!ids) cache.clear()
-  else for (const id of ids) cache.delete(id)
-  bump()
+  if (!ids) {
+    cache.clear()
+    stale.clear()
+    bump()
+    return
+  }
+  let any = false
+  for (const id of ids) {
+    if (cache.has(id)) {
+      stale.add(id)
+      if (!inFlight.has(id)) {
+        pending.add(id)
+        any = true
+      }
+    }
+  }
+  if (any) schedule()
 }
 
 export async function fetchItems(ids: number[]): Promise<MediaItem[]> {
-  const missing = ids.filter((id) => !cache.has(id))
+  const missing = ids.filter((id) => !cache.has(id) || stale.has(id))
   if (missing.length) {
     for (let i = 0; i < missing.length; i += 2000) {
       const items = await call('media.items', missing.slice(i, i + 2000))
-      for (const it of items) cache.set(it.id, it)
+      for (const it of items) {
+        cache.set(it.id, it)
+        stale.delete(it.id)
+      }
     }
     bump()
   }
