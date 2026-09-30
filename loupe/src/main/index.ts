@@ -1,4 +1,5 @@
 import './env'
+import './sharp-preload'
 import { app, BrowserWindow, nativeTheme } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'

@@ -5,6 +5,13 @@ import { readdirSync, statSync, mkdirSync, rmSync, existsSync } from 'node:fs'
 import { join, extname } from 'node:path'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
+if (process.versions.electron && process.platform === 'linux' && process.env.LOUPE_NATIVE_SHARP !== '1') {
+  // Same override the app applies (see src/main/sharp-preload.ts).
+  const Module = require('node:module')
+  const wasm = require('@img/sharp-wasm32/sharp.node')
+  const shim = require.resolve(`@img/sharp-linux-${process.arch}/sharp.node`)
+  Module._cache[shim] = { id: shim, filename: shim, loaded: true, exports: wasm, children: [], paths: [] }
+}
 const sharp = require('sharp')
 const root = process.argv[2] ?? 'test-data/varied'
 const out = 'test-data/harness-out'

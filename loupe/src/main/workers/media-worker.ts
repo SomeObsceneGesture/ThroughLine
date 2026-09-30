@@ -7,6 +7,7 @@
 //   convert    image conversion
 //   storyboard video scrub-preview sprite
 
+import '../sharp-preload'
 import { parentPort, workerData } from 'node:worker_threads'
 import { open, readFile, writeFile, mkdir, rename, stat, unlink } from 'node:fs/promises'
 import { createReadStream } from 'node:fs'
