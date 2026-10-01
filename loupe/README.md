@@ -132,7 +132,7 @@ That script stages the app with the Windows builds of sharp, ffmpeg and ffprobe,
 
 Code signing and notarisation are not configured. The first time an unsigned installer runs, Windows SmartScreen shows "Windows protected your PC"; choose **More info → Run anyway**. macOS shows a similar Gatekeeper prompt.
 
-`LOUPE_EXE=dist/linux-unpacked/loupe xvfb-run -a node tests/e2e/functional.mjs` runs the functional suite against a packaged build.
+`LOUPE_EXE=dist/linux-unpacked/loupe xvfb-run -a node tests/e2e/functional.mjs` runs the functional suite against a packaged build. `scripts/win-worker-check.cjs` runs the Windows build's media worker over a folder of test media under Wine (usage in its header). It covers libvips, libheif, ffmpeg and ffprobe for every format. Wine can't run the Windows UI itself: Chromium's output isn't displayed, and the main process stops servicing debugger and automation connections. A stock Electron app behaves the same way.
 
 ## Performance
 
