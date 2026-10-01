@@ -45,14 +45,14 @@ win:
       arch: [x64, arm64]
   icon: build/icon.png
 nsis:
-  oneClick: false
+  # One click: installs for the current user (no admin prompt), adds desktop
+  # and Start menu shortcuts, then opens Loupe. Uninstall from Windows Settings.
+  oneClick: true
   perMachine: false
-  allowToChangeInstallationDirectory: true
   createDesktopShortcut: always
   createStartMenuShortcut: true
   shortcutName: Loupe
-  installerSidebar: build/installerSidebar.bmp
-  uninstallerSidebar: build/installerSidebar.bmp
+  runAfterFinish: true
   artifactName: Loupe-Setup-${version}-${arch}.${ext}
 
 mac:
