@@ -22,6 +22,8 @@ asarUnpack:
   - '**/node_modules/@ffprobe-installer/**/*'
 electronDist: node_modules/electron/dist
 npmRebuild: false
+# No auto-update server; installers are distributed directly.
+publish: null
 
 fileAssociations:
   - ext: [jpg, jpeg, png, webp, gif, avif, bmp, tif, tiff, heic, heif]
@@ -49,6 +51,8 @@ nsis:
   createDesktopShortcut: always
   createStartMenuShortcut: true
   shortcutName: Loupe
+  installerSidebar: build/installerSidebar.bmp
+  uninstallerSidebar: build/installerSidebar.bmp
   artifactName: Loupe-Setup-${version}-${arch}.${ext}
 
 mac:
@@ -86,7 +90,8 @@ linux:
     - video/webm
     - video/x-msvideo
   desktop:
-    StartupWMClass: Loupe
+    entry:
+      StartupWMClass: Loupe
 appImage:
   artifactName: Loupe-${version}-${arch}.${ext}
 deb:

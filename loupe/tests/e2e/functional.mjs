@@ -23,8 +23,9 @@ const check = (name, ok, detail = '') => {
 }
 
 const app = await electron.launch({
-  executablePath: resolve('node_modules/electron/dist/electron'),
-  args: ['--no-sandbox', resolve('out/main/index.js')],
+  // LOUPE_EXE runs the suite against a packaged build (e.g. dist/linux-unpacked/loupe).
+  executablePath: process.env.LOUPE_EXE ? resolve(process.env.LOUPE_EXE) : resolve('node_modules/electron/dist/electron'),
+  args: process.env.LOUPE_EXE ? ['--no-sandbox'] : ['--no-sandbox', resolve('out/main/index.js')],
   env: { ...process.env, LOUPE_USER_DATA: join(work, 'userdata'), LOUPE_TEST_DIALOG_DIR: out }
 })
 const win = await app.firstWindow()

@@ -122,7 +122,17 @@ xvfb-run -a node tests/e2e/memory.mjs         # renderer memory with no debugger
 
 `electron-builder.yml` produces an NSIS installer (desktop + Start menu shortcuts, choosable install dir), a DMG, an AppImage and a .deb, with file associations for images, RAW and video ("Open With → Loupe"). Opening a single file shows it in the viewer with ←/→ through the rest of its folder; folders dropped on the icon go to import. The app is single-instance and remembers window size, position and the last library.
 
-Build each platform on that OS (or a CI matrix): `ffmpeg-static`, `@ffprobe-installer/*` and sharp's `@img/*` packages install the host platform's binaries. Code signing / notarisation are not configured.
+Build each platform on that OS (or a CI matrix): `ffmpeg-static`, `@ffprobe-installer/*` and sharp's `@img/*` packages install the host platform's binaries. The exception is Windows, which can also be built from Linux:
+
+```bash
+npm run build && bash scripts/dist-win-from-linux.sh   # → dist/Loupe-Setup-<version>-x64.exe
+```
+
+That script stages the app with the Windows builds of sharp, ffmpeg and ffprobe, then builds with the Windows Electron. It sets the exe's icon and version info in JavaScript, because electron-builder's own editor needs Wine. Wine with 32-bit support is still required for the uninstaller step (`wine32:i386` on Ubuntu).
+
+Code signing and notarisation are not configured. The first time an unsigned installer runs, Windows SmartScreen shows "Windows protected your PC"; choose **More info → Run anyway**. macOS shows a similar Gatekeeper prompt.
+
+`LOUPE_EXE=dist/linux-unpacked/loupe xvfb-run -a node tests/e2e/functional.mjs` runs the functional suite against a packaged build.
 
 ## Performance
 
