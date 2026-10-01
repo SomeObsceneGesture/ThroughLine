@@ -113,6 +113,7 @@ npm run build
 xvfb-run -a node tests/e2e/functional.mjs     # ~50 functional checks against the real app
 xvfb-run -a node tests/e2e/tour.mjs           # screenshots of every surface (after smoke.mjs)
 xvfb-run -a node tests/e2e/scale.mjs          # performance run (writes results.json)
+xvfb-run -a node tests/e2e/memory.mjs         # renderer memory with no debugger attached
 ```
 
 `tests/e2e/*` drive the built app through Playwright's Electron support. `LOUPE_USER_DATA` isolates the profile; `LOUPE_TEST_DIALOG_DIR` stands in for native file dialogs.
@@ -125,7 +126,13 @@ Build each platform on that OS (or a CI matrix): `ffmpeg-static`, `@ffprobe-inst
 
 ## Performance
 
-See `SCALE-RESULTS.md` (generated from `tests/e2e/scale.mjs`).
+15,500-item library, 4-core Linux container with software rendering. Details, method and caveats are in [`SCALE-RESULTS.md`](SCALE-RESULTS.md).
+
+- **Import:** first items appear 1.4 s after the drop. All 15,500 are browsable in 48 s, and thumbnails finish in the background (7 min on Linux's WebAssembly libvips).
+- **Cold start:** thumbnails are painted 0.8 s after launch. The full layout loads in 77 ms, and searches take 4–27 ms.
+- **Scrolling:** steady scrolling holds 60 fps. Only 42–65 DOM cells exist at any time.
+- **Viewer:** next/previous shows the full-resolution photo in 5 ms (median).
+- **Renderer memory:** about 400 MB private after sweeping every thumbnail, most of it Chromium's purgeable decoded-image cache. The app's own JS and DOM heaps are under 20 MB.
 
 ## Known limitations
 

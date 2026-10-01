@@ -16,6 +16,7 @@ import { IconButton, Spinner, Button } from '../ui/controls'
 import { InfoPanel } from '../InfoPanel'
 import { VideoPlayer } from './VideoPlayer'
 import * as actions from '../../lib/actions'
+import { targetIn } from '../../lib/dom'
 
 type Zoom = { mode: 'fit' | 'fill' | 'actual' | 'custom'; scale: number; x: number; y: number }
 
@@ -65,9 +66,10 @@ function ViewerInner() {
   const [chrome, setChrome] = useState(true)
   const [showInfo, setShowInfo] = useState(false)
   const [zoom, setZoom] = useState<Zoom>({ mode: prefs.viewer.defaultZoom, scale: 1, x: 0, y: 0 })
-  const [loadedFull, setLoadedFull] = useState<string | null>(null)
-  const [fullError, setFullError] = useState<string | null>(null)
-  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null)
+  // Keyed by URL so a render right after navigating never shows the previous
+  // photo's full image (or error) against the new item.
+  const [full, setFull] = useState<{ url: string; w: number; h: number } | null>(null)
+  const [fullErr, setFullErr] = useState<{ url: string; kind: string } | null>(null)
   const [stageSize, setStageSize] = useState({ w: 0, h: 0 })
   const [closing, setClosing] = useState(false)
   const stage = useRef<HTMLDivElement>(null)
@@ -124,28 +126,33 @@ function ViewerInner() {
     }
   }, [external, viewer.external, index, id, items])
 
-  // Load the full-resolution image once the item changes.
-  useEffect(() => {
-    setLoadedFull(null)
-    setFullError(null)
-    setNatural(null)
+  const shown = full && full.url === current?.full ? full : null
+  const loadedFull = shown?.url ?? null
+  const natural = useMemo(() => (shown ? { w: shown.w, h: shown.h } : null), [shown?.url, shown?.w, shown?.h]) // eslint-disable-line react-hooks/exhaustive-deps
+  const fullError = fullErr && fullErr.url === current?.full ? fullErr.kind : null
+
+  // Load the full-resolution image once the item changes. A preloaded
+  // neighbour is shown on the very first frame, without a thumbnail step.
+  useLayoutEffect(() => {
     setZoom({ mode: prefs.viewer.defaultZoom, scale: 1, x: 0, y: 0 })
     if (!current || current.kind !== 'photo' || !current.full) return
+    const url = current.full
     let live = true
-    const img = preloadCache.get(current.full) ?? new Image()
-    if (!img.src) img.src = current.full
-    img
-      .decode()
-      .then(() => {
-        if (!live) return
-        setNatural({ w: img.naturalWidth, h: img.naturalHeight })
-        setLoadedFull(current.full)
-      })
-      .catch(() => {
-        if (!live) return
-        preloadCache.delete(current.full)
-        setFullError(current.item?.missing ? 'missing' : 'unreadable')
-      })
+    const img = preloadCache.get(url) ?? new Image()
+    if (!img.src) img.src = url
+    const done = (): void => {
+      if (live) setFull({ url, w: img.naturalWidth, h: img.naturalHeight })
+    }
+    if (img.complete && img.naturalWidth > 0) done()
+    else
+      img
+        .decode()
+        .then(done)
+        .catch(() => {
+          if (!live) return
+          preloadCache.delete(url)
+          setFullErr({ url, kind: current.item?.missing ? 'missing' : 'unreadable' })
+        })
     return () => {
       live = false
     }
@@ -332,7 +339,7 @@ function ViewerInner() {
   useEffect(() => {
     const key = (e: KeyboardEvent): void => {
       if (useUI.getState().dialogs.length || useUI.getState().menu) return
-      if ((e.target as HTMLElement).closest('input, textarea')) return
+      if (targetIn(e.target, 'input, textarea')) return
       const k = e.key
       const ids = id !== undefined ? [id] : []
       let handled = true
@@ -577,6 +584,8 @@ function ViewerInner() {
               <img
                 src={imgSrc}
                 alt={current?.name}
+                data-item={id}
+                data-loaded={loadedFull ? 'full' : 'thumb'}
                 draggable={false}
                 className="w-full h-full"
                 style={{ imageRendering: scale >= 3 ? 'pixelated' : 'auto', filter: showingThumbOnly && natural === null && scale > 1.2 ? 'blur(0.5px)' : undefined }}

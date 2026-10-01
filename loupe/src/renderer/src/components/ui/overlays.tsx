@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Check, ChevronRight, X, AlertCircle, CheckCircle2, Info } from 'lucide-react'
 import { useUI, type MenuItem } from '../../store/ui'
 import { cx } from '../../lib/cx'
+import { targetIn } from '../../lib/dom'
 
 function MenuList({ items, x, y, altX, onDone, onBack, depth = 0 }: { items: MenuItem[]; x: number; y: number; altX?: number; onDone: () => void; onBack?: () => void; depth?: number }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -128,7 +129,7 @@ export function ContextMenuHost() {
   useEffect(() => {
     if (!menu) return
     const down = (e: MouseEvent): void => {
-      if ((e.target as HTMLElement).closest('[role="menu"]')) return
+      if (targetIn(e.target, '[role="menu"]')) return
       hide()
     }
     const blur = (): void => hide()

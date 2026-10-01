@@ -6,6 +6,7 @@ import { duration as fmtDur } from '../../lib/format'
 import { cx } from '../../lib/cx'
 import { Button, Spinner } from '../ui/controls'
 import { useApp } from '../../store/app'
+import { targetIn } from '../../lib/dom'
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 
@@ -152,7 +153,7 @@ export function VideoPlayer({ id, src: externalSrc, active, autoplay, loop: loop
   useEffect(() => {
     if (!active) return
     const key = (e: KeyboardEvent): void => {
-      if ((e.target as HTMLElement).closest('input, textarea, [role="dialog"]')) return
+      if (targetIn(e.target, 'input, textarea, [role="dialog"]')) return
       const v = video.current
       if (!v) return
       let handled = true

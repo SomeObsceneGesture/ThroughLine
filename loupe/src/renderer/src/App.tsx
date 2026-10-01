@@ -22,6 +22,7 @@ import { CollageStudio } from './views/collage/CollageStudio'
 import { DuplicatesView } from './views/Duplicates'
 import { Button } from './components/ui/controls'
 import { cx } from './lib/cx'
+import { targetIn } from './lib/dom'
 
 function useTheme(): void {
   const prefs = useApp((s) => s.prefs)
@@ -138,8 +139,7 @@ function useBootstrap(): void {
 }
 
 function isTyping(e: KeyboardEvent): boolean {
-  const t = e.target as HTMLElement
-  return !!t.closest('input, textarea, select, [contenteditable="true"]')
+  return targetIn(e.target, 'input, textarea, select, [contenteditable="true"]')
 }
 
 export function runCommand(cmd: string): void {

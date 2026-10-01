@@ -1,7 +1,7 @@
 // Scale / performance test against a large generated library.
 // Usage: xvfb-run -a node tests/e2e/scale.mjs [mediaDir=test-data/scale]
 import { _electron as electron } from 'playwright'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 
 const media = resolve(process.argv[2] ?? 'test-data/scale')
@@ -32,7 +32,19 @@ async function launch() {
 const metrics = async (app) => {
   const m = await app.evaluate(({ app }) => app.getAppMetrics().map((p) => ({ type: p.type, mb: Math.round(p.memory.workingSetSize / 1024), cpu: Math.round(p.cpu.percentCPUUsage) })))
   const sum = (t) => m.filter((p) => p.type === t).reduce((n, p) => n + p.mb, 0)
-  return { browser: sum('Browser'), renderer: sum('Tab'), gpu: sum('GPU'), total: m.reduce((n, p) => n + p.mb, 0) }
+  const out = { browser: sum('Browser'), renderer: sum('Tab'), gpu: sum('GPU'), total: m.reduce((n, p) => n + p.mb, 0) }
+  // Linux: split the renderer's resident memory into private (anon) and shared
+  // (shmem — raster tiles/bitmaps shared with the GPU process, double counted above).
+  try {
+    const pid = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getOSProcessId())
+    const st = readFileSync(`/proc/${pid}/status`, 'utf8')
+    const kb = (k) => Math.round(+(st.match(new RegExp(`${k}:\\s+(\\d+)`))?.[1] ?? 0) / 1024)
+    out.rendererAnon = kb('RssAnon')
+    out.rendererShmem = kb('RssShmem')
+    const win = await app.firstWindow()
+    out.jsHeap = await win.evaluate(() => Math.round(performance.memory.usedJSHeapSize / 1048576))
+  } catch { /* non-Linux */ }
+  return out
 }
 
 // Measures frame gaps while `fn` runs in the renderer.
@@ -99,7 +111,7 @@ if (fresh) {
   log('import complete — all items browsable (ms)', importMs)
   log('items imported', (await invoke('library.counts')).all)
   const midMem = await metrics(app)
-  log('memory during processing (MB)', midMem)
+  log('memory during processing (MB, Playwright-attached)', midMem)
   const idleFrames = await frameProbe(win, 3000)
   log('idle UI frames during processing avg/p95/max', [idleFrames.avg, idleFrames.p95, idleFrames.max])
   const duringProc = await scrollSweep(win, 4000)
@@ -126,6 +138,7 @@ if (fresh) {
   await win.waitForSelector('[data-media-id] img.loaded', { timeout: 60000 })
   log('cold start → first thumbnails painted (ms)', Date.now() - t0)
   await win.waitForTimeout(1500)
+  log('memory after cold start (MB, Playwright-attached)', await metrics(app))
   await win.screenshot({ path: join(shots, '60-scale-grid.png') })
 
   const q = async (search, view = { type: 'all' }) => {
@@ -142,6 +155,26 @@ if (fresh) {
   await invoke('media.items', ids.slice(0, 400))
   log('fetch 400 item details (ms)', Date.now() - it0)
 
+  // A brisk but human scroll speed (2,000 px/s) in the default grid.
+  const steady = await win.evaluate(() => new Promise((res) => {
+    const el = document.querySelector('[data-gallery-scroller]')
+    el.scrollTop = 0
+    const start = performance.now()
+    const gaps = []
+    let last = start
+    const step = (t) => {
+      gaps.push(t - last)
+      last = t
+      el.scrollTop = ((t - start) / 1000) * 2000
+      if (t - start < 5000) requestAnimationFrame(step)
+      else {
+        gaps.sort((a, b) => a - b)
+        res({ avg: +(gaps.reduce((a, b) => a + b, 0) / gaps.length).toFixed(1), p95: +gaps[Math.floor(gaps.length * 0.95)].toFixed(1), max: +gaps[gaps.length - 1].toFixed(1) })
+      }
+    }
+    requestAnimationFrame(step)
+  }))
+  log('steady scroll grid 2000px/s: avg/p95/max ms', [steady.avg, steady.p95, steady.max])
   for (const layout of ['grid', 'masonry', 'timeline', 'list']) {
     await win.evaluate((l) => window.__setPrefs({ layout: l }), layout)
     await win.waitForTimeout(1200)
@@ -154,29 +187,45 @@ if (fresh) {
   await win.waitForTimeout(800)
   await win.evaluate((ids) => window.__openViewer(ids, 100), ids)
   await win.waitForTimeout(1000)
+  // Time from ArrowRight to (a) the new photo on screen and (b) full resolution decoded.
   const nav = await win.evaluate(() => new Promise((res) => {
-    const times = []
+    const shown = []
+    const full = []
     let i = 0
+    const img = () => document.querySelector('[data-viewer-root] img[data-item]')
     const next = () => {
+      const prev = img()?.dataset.item
       const t = performance.now()
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))
+      let seen = false
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
       const wait = () => {
-        const img = document.querySelector('[data-viewer-root] img')
-        if (img && img.complete) {
-          times.push(performance.now() - t)
-          if (++i < 20) setTimeout(next, 120)
-          else res(times)
-        } else requestAnimationFrame(wait)
+        const el = img()
+        if (el && el.dataset.item !== prev) {
+          if (!seen && el.complete) {
+            seen = true
+            shown.push(performance.now() - t)
+          }
+          if (el.dataset.loaded === 'full' && el.complete) {
+            if (!seen) shown.push(performance.now() - t)
+            full.push(performance.now() - t)
+            if (++i < 20) setTimeout(next, 250)
+            else res({ shown, full })
+            return
+          }
+        }
+        if (performance.now() - t > 10000) return res({ shown, full, timeout: true })
+        requestAnimationFrame(wait)
       }
       requestAnimationFrame(wait)
     }
     next()
   }))
-  nav.sort((a, b) => a - b)
-  log('viewer next-photo latency median/max (ms)', [Math.round(nav[10]), Math.round(nav[nav.length - 1])])
+  const med = (a) => { const b = [...a].sort((x, y) => x - y); return Math.round(b[Math.floor(b.length / 2)]) }
+  log('viewer next photo on screen median/max (ms)', [med(nav.shown), Math.round(Math.max(...nav.shown))])
+  log('viewer full resolution median/max (ms)', [med(nav.full), Math.round(Math.max(...nav.full))])
   await win.keyboard.press('Escape')
   await win.waitForTimeout(500)
-  log('memory after browsing (MB)', await metrics(app))
+  log('memory after browsing (MB, Playwright-attached; see memory.mjs)', await metrics(app))
   await app.close()
 }
 

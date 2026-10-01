@@ -12,6 +12,7 @@ import {
   type CollageState, type Rect, type TextLayer
 } from './model'
 import { canvasToBytes, exportSize, renderCollage, sourceUrl } from './render'
+import { targetIn } from '../../lib/dom'
 
 const TRAY_MIME = 'application/x-loupe-collage-media'
 const CELL_MIME = 'application/x-loupe-collage-cell'
@@ -127,7 +128,7 @@ export function CollageStudio() {
   // Keyboard: undo/redo and delete within the studio.
   useEffect(() => {
     const key = (e: KeyboardEvent): void => {
-      if ((e.target as HTMLElement).closest('input, textarea, [contenteditable="true"], [role="dialog"]')) return
+      if (targetIn(e.target, 'input, textarea, [contenteditable="true"], [role="dialog"]')) return
       if (useUI.getState().dialogs.length) return
       const modKey = isMac ? e.metaKey : e.ctrlKey
       if (modKey && e.key.toLowerCase() === 'z') {
